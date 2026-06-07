@@ -4,64 +4,52 @@
 
 ## DONE
 
-*Nothing yet. This is day one.*
+### Track 2 Phase 1 — Infrastructure
+**Closed: 2026-06-07 — SPONSOR APPROVED**
+
+- **Feature Spec**: [`FEATURES/TRACK2_PHASE1_INFRASTRUCTURE.md`](FEATURES/TRACK2_PHASE1_INFRASTRUCTURE.md)
+- **Live URL**: `https://simulator.voxhop.borshik.net` (Let's Encrypt TLS, expires 2026-09-05)
+- **Instance**: `i-0295d1d370d43a642` (`g5.xlarge`, `eu-north-1b`) · EIP `13.62.124.43`
+- **Result**: All 7 services healthy (voxhop-simulator, voxhop-counterparty, voxhop-app, voxhop-ollama, voxhop-whisper, voxhop-piper, voxhop-redis). Let's Encrypt cert (DNS-01/Route 53). 5 EU personas loaded. AudioWorklet + mic permission confirmed in browser. COOP/COEP headers verified. WS handshake confirmed. 55/55 Track 1 Vitest tests — zero regressions.
+
+### Track 1 — Foundation + Pipeline Demo
+**Closed: 2026-06-06 — SPONSOR APPROVED**
+
+- **Feature Spec**: [`FEATURES/TRACK1_FOUNDATION_PIPELINE.md`](FEATURES/TRACK1_FOUNDATION_PIPELINE.md)
+- **Delivery Archive**: [`DELIVERY_SCHEDULE_ARCHIVE.md`](DELIVERY_SCHEDULE_ARCHIVE.md)
+- **AMI**: `ami-0cae9aa0e65457fa4` (re-baked 2026-06-06 — compose config fully baked in, zero post-boot SSM required)
+- **Instance**: `i-0295d1d370d43a642` (`g5.xlarge`, `eu-north-1b`) · EIP `13.62.124.43` · `wss://13.62.124.43:3000/ws/calls`
+- **Result**: All 5 services healthy on first boot (voxhop-app, voxhop-ollama [CUDA A10G gemma4], voxhop-whisper [CUDA large-v3], voxhop-piper, voxhop-redis). TypeScript 0 errors. 55/55 Vitest tests passing.
 
 ---
 
-## NOW *(Parallel tracks — both required before NEXT begins)*
+## NOW *(single-feature focus)*
 
-> Both tracks run simultaneously. Translation Layer does not start until both are complete.
-
----
-
-### Track 1: Foundation + Pipeline Demo
-**Target: Week 1 internal demo**
-*Prove the pipe. IaC from the very first resource.*
-
--   **Status**: `READY TO START`
--   **Goal**: Establish a live end-to-end STT → LLM → TTS pipeline on a real Gamma PSTN call in echo/synthesis mode — no translation yet. VoxHop intercepts a dual-stream call via `telco-ai-bridge`, transcribes speech with Whisper, passes the transcript through Ollama, and synthesises audio back to the caller with Piper. All infrastructure defined in Terraform from day one. All services containerised via Docker Compose.
--   **Acceptance**:
-    1. `make deploy` brings the full VoxHop AI stack on `eu-north-1` from zero — no manual steps
-    2. `telco-ai-bridge` WebSocket client connects and receives dual `caller`/`called` audio tracks
-    3. Silero VAD detects end-of-speech and fires on both legs independently
-    4. Whisper STT produces accurate transcripts from live call audio
-    5. Ollama receives transcript and returns synthesised text (echo prompt)
-    6. Piper synthesises audio and VoxHop injects it back into the correct call leg
-    7. End-to-end round-trip latency measured and logged per turn (Prometheus)
-    8. AI service failure (Whisper/Ollama/Piper down) leaves call connected, untranslated
-    9. `make destroy` cleanly tears down all resources with no orphans
--   **Dependencies**: Active `telco-ai-bridge` instance with Gamma DID configured; `eu-north-1` A10G GPU quota approved; Terraform state backend configured (S3 + DynamoDB lock)
-
----
-
-### Track 2: VoxHop Simulator + AI Counterparty
-**Target: Week 1 (alongside Track 1) — first-class priority**
-*Built in parallel with the foundation. Required before any translation work begins.*
-
--   **Status**: `READY TO START`
--   **Goal**: A complete developer testing suite that allows a single developer to exercise the full VoxHop pipeline end-to-end without a real second caller. Clean service boundary — the simulator connects to VoxHop only via the public `telco-ai-bridge` WebSocket interface. No shared in-process state. Independently deployable on a separate instance or a developer laptop.
--   **Components**:
-    - **VoxHop Simulator UI** (`npx tsx voxhop-simulator.ts`): Zero-build-step browser WebRTC simulator. Developer speaks as Party A; AI Counterparty is Party B. Two-panel layout: VoxHop Panel (dual-leg transcripts, per-turn latency, language labels, pipeline state, `telco-ai-bridge` protocol event timeline) and AI Counterparty Panel (persona card, LLM token stream, transcript log, per-turn STT/LLM/TTS telemetry).
-    - **AI Counterparty Voice Agent**: Full audio round-trip pipeline — Silero VAD on VoxHop's Language B TTS output → Whisper STT (Language B) → Ollama LLM (persona prompt + conversation history) → Piper TTS (Language B) → audio injected into Leg B. Ships with 5–8 starter personas covering the EU cluster. In-browser persona editor backed by `counterparties/*.json` library.
--   **Acceptance**:
-    1. Developer selects a persona (e.g. "Madrid Hotel Receptionist / ES"), clicks Dial — call connects within 3 seconds
-    2. Developer speaks English; hears translated response in their speakers within the 1.5s latency budget
-    3. AI Counterparty Panel shows live LLM token stream as the counterparty generates its response
-    4. Per-turn telemetry visible inline: STT / LLM / TTS latency breakdown for counterparty pipeline
-    5. Simulator runs on a developer laptop without touching the VoxHop GPU instance
-    6. New persona created and saved in the UI editor persists across sessions
-    7. Simulator deployable via `docker compose up` with no GPU dependency
--   **Dependencies**: Track 1 WebSocket interface reachable; Piper EU voice packs (ES, FR, DE, IT) installed on inference server
+> Track 2 Phase 1 is DONE. Phase 2 is next.
 
 ---
 
 ## NEXT
-*Begins only when both NOW tracks are complete.*
+*Phases 2 and 3 are queued. Translation Layer and Debug Instrumentation follow Phase 3.*
+
+### Track 2 Phase 2 — AI Counterparty + Direct Mode
+**Feature Spec**: [`FEATURES/TRACK2_PHASE2_COUNTERPARTY.md`](FEATURES/TRACK2_PHASE2_COUNTERPARTY.md)
+
+-   **Status**: `NEXT — READY TO START`
+-   **Goal**: A developer can have a real spoken conversation with an AI Counterparty via Direct Mode. The Counterparty runs a full VAD→Whisper→Ollama→Piper pipeline. The Simulator Backend speaks to the Counterparty using the **same telco-ai-bridge wire protocol as a regular (non-replace) call** — `voxhop-app` is not involved in Direct Mode.
+-   **Dependencies**: Track 2 Phase 1 DONE
+
+### Track 2 Phase 3 — Translation + Replace Mode
+**Feature Spec**: [`FEATURES/TRACK2_PHASE3_TRANSLATION.md`](FEATURES/TRACK2_PHASE3_TRANSLATION.md)
+
+-   **Status**: `AWAITING PHASE 2 COMPLETION`
+-   **Goal**: Full Translation Mode — Track 1 schema migration (`txTracks[]`), Replace Mode wire-up in `voxhop-app`, cross-routing in the Simulator Backend, and Translation Mode frontend. At the end of Phase 3, the original Track 2 vision is complete.
+-   **Dependencies**: Track 2 Phase 2 DONE
 
 ### Translation Layer
 *The intelligence layer. Add EU cluster translation to the proven pipeline.*
 
--   **Status**: `AWAITING NOW COMPLETION`
+-   **Status**: `AWAITING PHASE 3 COMPLETION`
 -   **Goal**: Replace the echo/synthesis Ollama prompt with a real-time translation instruction. Each party's speech is transcribed in their source language and synthesised in the counterpart's target language. Language pairs are statically configured per DID in Redis. EU cluster: English, Spanish, French, German, Italian (all combinations). Translation quality validated continuously using the AI Counterparty — no bilingual human required for basic quality assessment.
 -   **Key work**:
     - Translation system prompt design and evaluation against EU cluster sentence test suite
@@ -70,14 +58,14 @@
     - Sentence-level LLM streaming dispatch to TTS (SentenceSplitter pattern from HelloSurgery)
     - Latency tuning to achieve p95 ≤1.5s across all EU language pairs
     - Comfort silence/tone injected to listening leg during processing turn
--   **Dependencies**: NOW (both tracks) DONE
+-   **Dependencies**: Track 2 Phase 3 DONE
 
 ### Debug Instrumentation
 *Make the PoC debuggable. Per-call transcription logs and audio recordings.*
 
--   **Status**: `AWAITING NOW COMPLETION`
+-   **Status**: `AWAITING PHASE 3 COMPLETION`
 -   **Goal**: When `DEBUG_RECORD=true`, VoxHop writes a per-call JSONL transcript log (speaker, language, source transcript, translated transcript, turn latency) and raw LPCM16 audio files (inbound per leg, outbound per leg). Files are named by `callId` and timestamped. Storage path is configurable (`/tmp/debug` locally, S3 in production via existing Terraform bucket). Enabled by default for PoC; disabled by default in production config.
--   **Dependencies**: NOW (both tracks) DONE
+-   **Dependencies**: Track 2 Phase 3 DONE
 
 ### PoC Stakeholder Sign-off Gate
 *The Week 4 milestone. Three-stakeholder approval to proceed to pre-production.*

@@ -1,0 +1,9 @@
+{
+  "name": "voxhop-counterparty",
+  "version": "1.0.0",
+  "description": "VoxHop Counterparty — Phase 1 stub (GET /health only, zero production deps)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

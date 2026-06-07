@@ -1,0 +1,159 @@
+version: '3.9'
+
+services:
+  # ─── Whisper STT (faster-whisper, CUDA) ────────────────────────────────────
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cuda
+    container_name: voxhop-whisper
+    runtime: nvidia
+    environment:
+      - WHISPER_MODEL=large-v3
+      - WHISPER_DEVICE=cuda
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - whisper-cache:/root/.cache/huggingface
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" 2>/dev/null && echo ok || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
+
+  # ─── Ollama LLM ─────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: voxhop-ollama
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+      - OLLAMA_NUM_GPU=1
+    volumes:
+      - /opt/voxhop/ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
+
+  # ─── Piper TTS HTTP Wrapper ──────────────────────────────────────────────────
+  piper-http:
+    build:
+      context: ./piper-http
+      dockerfile: Dockerfile
+    container_name: voxhop-piper
+    volumes:
+      - /opt/voxhop/models:/models:ro
+    environment:
+      - PIPER_MODEL=/models/en_GB-alan-medium.onnx
+      - PIPER_BIN=/usr/local/bin/piper
+      - PIPER_MODELS_DIR=/models
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ─── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: voxhop-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── VoxHop Node.js Service ──────────────────────────────────────────────────
+  voxhop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: voxhop-app
+    environment:
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - WHISPER_URL=http://whisper:8000
+      - OLLAMA_URL=http://ollama:11434
+      - PIPER_URL=http://piper-http:5000
+      - OLLAMA_MODEL=gemma4
+      - COMFORT_CLIP_PATH=/opt/voxhop/audio/comfort_en.pcm
+      - LOG_LEVEL=info
+    volumes:
+      - /opt/voxhop/audio:/opt/voxhop/audio:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      whisper:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      piper-http:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const http=require('http');http.get('http://localhost:3000/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ─── VoxHop Simulator (NestJS + React SPA) ──────────────────────────────────
+  # COOP/COEP are set at NestJS app layer only — do NOT add them here (AR-02)
+  voxhop-simulator:
+    image: voxhop-simulator:latest
+    container_name: voxhop-simulator
+    ports:
+      - "443:443"
+    volumes:
+      - ./counterparties:/app/counterparties:ro  # M-09: read-only mount
+      - /etc/letsencrypt:/etc/letsencrypt:ro     # ER-05: Let's Encrypt cert host-mount
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - COOP_COEP_ENABLED=true
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-k", "https://localhost:443/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ─── VoxHop Counterparty (Phase 1 stub — GET /health only) ─────────────────
+  # M-05: Returns {"status":"stub"} on GET /health; 404 on all other paths.
+  # MN-08: Zero Phase 2 dependencies. Single index.js using node:http.
+  voxhop-counterparty:
+    image: voxhop-counterparty-stub:latest
+    container_name: voxhop-counterparty
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const http=require('http');http.get('http://localhost:3001/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  whisper-cache:

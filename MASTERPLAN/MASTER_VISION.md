@@ -133,7 +133,7 @@ An autonomous voice agent that occupies Leg B of any VoxHop test call. Runs the 
 - **Outbound pacing**: 20ms ticker with silence fill, matching `telco-ai-bridge` RTP cadence
 - **Call state**: Redis (per-call hash, DID-to-language-pair mapping, processingTurn flags)
 - **Debug instrumentation**: Per-call JSONL transcript log + LPCM16 audio recording files (PoC phase, gated by `DEBUG_RECORD=true`)
-- **Simulator UI**: Zero-build-step single TypeScript file (`npx tsx voxhop-simulator.ts`), vanilla JS + Tailwind CDN SPA, Web Audio API dual AudioWorklet (capture + ring-buffer playback), Node.js WebSocket proxy to `telco-ai-bridge`, protocol event timeline log
+- **Simulator UI**: ~~Zero-build-step single TypeScript file~~ **[OVERRIDDEN — Track 2 Sponsor directive 2026-06-06]** React 18 + TypeScript + Vite + Tailwind CSS SPA, served by a NestJS backend. Vite build is baked into the Docker image — operator ergonomics unchanged (`docker compose up`). Web Audio API dual AudioWorklet (capture + ring-buffer playback), NestJS WebSocket gateway to VoxHop, protocol event timeline log. The zero-build-step constraint is retired for this component.
 - **AI counterparty**: Node.js TypeScript service; Silero VAD v5 (`avr-vad`) on VoxHop's Language B TTS output; Whisper STT (shared inference server); Ollama LLM with persona system prompt + conversation history; Piper TTS (language-matched voice pack); persona configs as JSON in `counterparties/` directory
 
 **Deployment**:
