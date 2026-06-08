@@ -33,6 +33,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - CUDA_VISIBLE_DEVICES=0
       - OLLAMA_NUM_GPU=1
+      - OLLAMA_KEEP_ALIVE=-1
     volumes:
       - /opt/voxhop/ollama:/root/.ollama
     ports:
@@ -47,9 +48,7 @@ services:
 
   # ─── Piper TTS HTTP Wrapper ──────────────────────────────────────────────────
   piper-http:
-    build:
-      context: ./piper-http
-      dockerfile: Dockerfile
+    image: ${ECR_PIPER_URL:-voxhop-piper-http:latest}
     container_name: voxhop-piper
     volumes:
       - /opt/voxhop/models:/models:ro
@@ -82,9 +81,7 @@ services:
 
   # ─── VoxHop Node.js Service ──────────────────────────────────────────────────
   voxhop:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${ECR_APP_URL:-voxhop-app:latest}
     container_name: voxhop-app
     environment:
       - PORT=3000
@@ -119,7 +116,7 @@ services:
   # ─── VoxHop Simulator (NestJS + React SPA) ──────────────────────────────────
   # COOP/COEP are set at NestJS app layer only — do NOT add them here (AR-02)
   voxhop-simulator:
-    image: voxhop-simulator:latest
+    image: ${ECR_SIMULATOR_URL:-voxhop-simulator:latest}
     container_name: voxhop-simulator
     ports:
       - "443:443"
@@ -129,8 +126,11 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      voxhop-counterparty:
+        condition: service_healthy
     environment:
       - COOP_COEP_ENABLED=true
+      - COUNTERPARTY_URL=ws://voxhop-counterparty:3001
     healthcheck:
       test: ["CMD", "curl", "-sf", "-k", "https://localhost:443/health"]
       interval: 10s
@@ -139,20 +139,37 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ─── VoxHop Counterparty (Phase 1 stub — GET /health only) ─────────────────
-  # M-05: Returns {"status":"stub"} on GET /health; 404 on all other paths.
-  # MN-08: Zero Phase 2 dependencies. Single index.js using node:http.
+  # ─── VoxHop Counterparty (Phase 2 — full AI pipeline VAD→Whisper→Ollama→Piper) ─
   voxhop-counterparty:
-    image: voxhop-counterparty-stub:latest
+    image: ${ECR_COUNTERPARTY_URL:-voxhop-counterparty:latest}
     container_name: voxhop-counterparty
     ports:
       - "3001:3001"
+    # No counterparties volume — persona delivered in call_initiated.customData
+    environment:
+      - PORT=3001
+      - WHISPER_URL=http://whisper:8000
+      - OLLAMA_URL=http://ollama:11434
+      - PIPER_URL=http://piper-http:5000
+      - OLLAMA_MODEL=gemma4
+      - WHISPER_TIMEOUT_MS=30000
+      - OLLAMA_TIMEOUT_MS=90000
+      - PIPER_TIMEOUT_MS=20000
+      - LOG_LEVEL=info
+    depends_on:
+      whisper:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      piper-http:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"const http=require('http');http.get('http://localhost:3001/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\""]
+      # CP-01: must return {"status":"ok"}, NOT {"status":"stub"}
+      test: ["CMD-SHELL", "node -e \"const http=require('http');http.get('http://localhost:3001/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{const j=JSON.parse(d);process.exit(j.status==='ok'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))\""]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
 volumes:

@@ -236,6 +236,17 @@ resource "aws_iam_role_policy" "voxhop_ec2" {
         Effect   = "Allow"
         Action   = ["route53:ListHostedZones", "route53:ListHostedZonesByName"]
         Resource = "*"
+      },
+      {
+        # ECR pull access (Phase 2 — app images pulled from ECR on deploy)
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -319,4 +330,34 @@ resource "aws_eip" "voxhop" {
   tags = {
     Name = "voxhop-eip"
   }
+}
+
+# ─── ECR Repositories (Phase 2) ───────────────────────────────────────────────
+
+resource "aws_ecr_repository" "voxhop_app" {
+  name                 = "voxhop-app"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+  tags = { Name = "voxhop-app-ecr" }
+}
+
+resource "aws_ecr_repository" "voxhop_simulator" {
+  name                 = "voxhop-simulator"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+  tags = { Name = "voxhop-simulator-ecr" }
+}
+
+resource "aws_ecr_repository" "voxhop_counterparty" {
+  name                 = "voxhop-counterparty"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+  tags = { Name = "voxhop-counterparty-ecr" }
+}
+
+resource "aws_ecr_repository" "voxhop_piper" {
+  name                 = "voxhop-piper"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+  tags = { Name = "voxhop-piper-ecr" }
 }

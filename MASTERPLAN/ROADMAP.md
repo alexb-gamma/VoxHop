@@ -25,19 +25,20 @@
 
 ## NOW *(single-feature focus)*
 
-> Track 2 Phase 1 is DONE. Phase 2 is next.
+### Track 2 Phase 2 — AI Counterparty + Direct Mode
+**Entered NOW: 2026-06-07 — SPONSOR APPROVED**
+
+- **Feature Spec**: [`FEATURES/TRACK2_PHASE2_COUNTERPARTY.md`](FEATURES/TRACK2_PHASE2_COUNTERPARTY.md)
+- **Status**: `IMPLEMENTATION COMPLETE — AWAITING SPONSOR VERIFICATION`
+- **Goal**: A developer can have a real spoken conversation with an AI Counterparty via Direct Mode. The Counterparty runs a full VAD→Whisper→Ollama→Piper pipeline as a standalone WebSocket server. The Simulator Backend acts as the caller-side bridge speaking the telco-ai-bridge wire protocol. `voxhop-app` is not involved in Direct Mode.
+- **Dependencies**: Track 2 Phase 1 DONE ✅
+- **Co-Signs**: Chief Architect (INITIATE) ✅ · UI/UX ✅ · Engineering ✅ · Integration Test ✅ · Chief Architect (REVIEW) ✅ · **Sponsor ✅ APPROVED 2026-06-07**
+- **Automated Test Gate**: `voxhop-counterparty` 0 errors · 32/32 ✅ · `voxhop-simulator` 0 errors · 29/0 failed ✅ — PASSED 2026-06-07
 
 ---
 
 ## NEXT
-*Phases 2 and 3 are queued. Translation Layer and Debug Instrumentation follow Phase 3.*
-
-### Track 2 Phase 2 — AI Counterparty + Direct Mode
-**Feature Spec**: [`FEATURES/TRACK2_PHASE2_COUNTERPARTY.md`](FEATURES/TRACK2_PHASE2_COUNTERPARTY.md)
-
--   **Status**: `NEXT — READY TO START`
--   **Goal**: A developer can have a real spoken conversation with an AI Counterparty via Direct Mode. The Counterparty runs a full VAD→Whisper→Ollama→Piper pipeline. The Simulator Backend speaks to the Counterparty using the **same telco-ai-bridge wire protocol as a regular (non-replace) call** — `voxhop-app` is not involved in Direct Mode.
--   **Dependencies**: Track 2 Phase 1 DONE
+*Phases 3 and beyond are queued. Translation Layer and Debug Instrumentation follow Phase 3.*
 
 ### Track 2 Phase 3 — Translation + Replace Mode
 **Feature Spec**: [`FEATURES/TRACK2_PHASE3_TRANSLATION.md`](FEATURES/TRACK2_PHASE3_TRANSLATION.md)

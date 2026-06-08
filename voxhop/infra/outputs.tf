@@ -23,3 +23,33 @@ output "ns_records" {
   description = "Route 53 NS records for voxhop.borshik.net — add these to borshik.net registrar to complete sub-delegation"
   value       = aws_route53_zone.voxhop.name_servers
 }
+
+output "ecr_app_url" {
+  description = "ECR URL for voxhop-app image"
+  value       = aws_ecr_repository.voxhop_app.repository_url
+}
+
+output "ecr_simulator_url" {
+  description = "ECR URL for voxhop-simulator image"
+  value       = aws_ecr_repository.voxhop_simulator.repository_url
+}
+
+output "ecr_counterparty_url" {
+  description = "ECR URL for voxhop-counterparty image"
+  value       = aws_ecr_repository.voxhop_counterparty.repository_url
+}
+
+output "ecr_piper_url" {
+  description = "ECR URL for voxhop-piper image"
+  value       = aws_ecr_repository.voxhop_piper.repository_url
+}
+
+output "eip_public_ip" {
+  description = "Elastic IP public address (for EC2 Instance Connect SSH)"
+  value       = aws_eip.voxhop.public_ip
+}
+
+output "availability_zone" {
+  description = "AZ of the EC2 instance (for ec2-instance-connect send-ssh-public-key)"
+  value       = aws_subnet.public.availability_zone
+}

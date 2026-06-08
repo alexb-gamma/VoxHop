@@ -1,4 +1,4 @@
-.PHONY: bootstrap build-ami deploy issue-cert destroy start stop logs status build test
+.PHONY: bootstrap build-ami deploy issue-cert destroy start stop logs status build test deploy-app
 
 # ─── Bootstrap (one-time) ─────────────────────────────────────────────────────
 bootstrap:
@@ -110,3 +110,48 @@ build:
 
 test:
 	npm test
+
+# ─── ECR App-Layer Deploy (Phase 2) ──────────────────────────────────────────
+# Replaces AMI rebuild for app code changes. Runs in <5 minutes on warm cache.
+# Prerequisites: AWS CLI configured, docker running, terraform apply done.
+# Instance access via SSM (port 22 not open — SG allows 443+3000 only).
+# Set ECR_REGION if not eu-north-1. Run from voxhop/ directory.
+ECR_REGION  ?= eu-north-1
+ECR_ACCOUNT  = $(shell aws sts get-caller-identity --query Account --output text)
+ECR_PREFIX   = $(ECR_ACCOUNT).dkr.ecr.$(ECR_REGION).amazonaws.com
+INSTANCE_ID  = $(shell terraform -chdir=infra output -raw instance_id)
+
+deploy-app:
+	@echo "[voxhop] Building React client (must run before Docker build picks up static/)..."
+	cd ../voxhop-simulator/client && npm ci --prefer-offline && npm run build
+	@echo "[voxhop] Logging in to ECR..."
+	aws ecr get-login-password --region $(ECR_REGION) | \
+	  docker login --username AWS --password-stdin $(ECR_PREFIX)
+	@echo "[voxhop] Building app images in parallel..."
+	docker build -t $(ECR_PREFIX)/voxhop-app:latest -f Dockerfile . & \
+	docker build -t $(ECR_PREFIX)/voxhop-simulator:latest -f ../voxhop-simulator/Dockerfile ../voxhop-simulator/ & \
+	docker build -t $(ECR_PREFIX)/voxhop-counterparty:latest -f ../voxhop-counterparty/Dockerfile ../voxhop-counterparty/ & \
+	docker build -t $(ECR_PREFIX)/voxhop-piper:latest -f piper-http/Dockerfile piper-http/ & \
+	wait
+	@echo "[voxhop] Pushing images to ECR..."
+	docker push $(ECR_PREFIX)/voxhop-app:latest
+	docker push $(ECR_PREFIX)/voxhop-simulator:latest
+	docker push $(ECR_PREFIX)/voxhop-counterparty:latest
+	docker push $(ECR_PREFIX)/voxhop-piper:latest
+	@echo "[voxhop] Uploading docker-compose.yml to S3 for instance download..."
+	aws s3 cp docker-compose.yml s3://voxhop-debug-$(ECR_ACCOUNT)/deploy/docker-compose.yml
+	@echo "[voxhop] Triggering SSM pull + restart on instance..."
+	aws ssm send-command \
+	  --region $(ECR_REGION) \
+	  --instance-ids $(INSTANCE_ID) \
+	  --document-name "AWS-RunShellScript" \
+	  --parameters "commands=[ \
+	    \"set -e\", \
+	    \"aws s3 cp s3://voxhop-debug-$(ECR_ACCOUNT)/deploy/docker-compose.yml /opt/voxhop/docker-compose.yml\", \
+	    \"aws ecr get-login-password --region $(ECR_REGION) | docker login --username AWS --password-stdin $(ECR_PREFIX)\", \
+	    \"cd /opt/voxhop\", \
+	    \"ECR_APP_URL=$(ECR_PREFIX)/voxhop-app:latest ECR_SIMULATOR_URL=$(ECR_PREFIX)/voxhop-simulator:latest ECR_COUNTERPARTY_URL=$(ECR_PREFIX)/voxhop-counterparty:latest ECR_PIPER_URL=$(ECR_PREFIX)/voxhop-piper:latest docker compose pull voxhop voxhop-simulator voxhop-counterparty piper-http\", \
+	    \"ECR_APP_URL=$(ECR_PREFIX)/voxhop-app:latest ECR_SIMULATOR_URL=$(ECR_PREFIX)/voxhop-simulator:latest ECR_COUNTERPARTY_URL=$(ECR_PREFIX)/voxhop-counterparty:latest ECR_PIPER_URL=$(ECR_PREFIX)/voxhop-piper:latest docker compose up -d voxhop voxhop-simulator voxhop-counterparty piper-http\" \
+	  ]" \
+	  --output text --query "Command.CommandId"
+	@echo "[voxhop] deploy-app dispatched — check SSM console or run: aws ssm list-command-invocations --region $(ECR_REGION) --instance-id $(INSTANCE_ID) --details"

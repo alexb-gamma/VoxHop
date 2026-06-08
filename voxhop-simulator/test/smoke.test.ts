@@ -229,40 +229,6 @@ describe('PersonaSchema — M-12 Zod validation', () => {
   });
 });
 
-// ─── Counterparty Stub Logic Tests (M-05) ────────────────────────────────────
-
-describe('voxhop-counterparty stub — M-05', () => {
-  // Mirror the behavior of voxhop-counterparty/index.js (pure logic, no network)
-  const routeHandler = (method: string, url: string): { status: number; body: unknown } => {
-    if (method === 'GET' && url === '/health') {
-      return { status: 200, body: { status: 'stub' } };
-    }
-    return { status: 404, body: { error: 'not found' } };
-  };
-
-  it('GET /health returns 200 {"status":"stub"} (M-05, NEG-28)', () => {
-    const result = routeHandler('GET', '/health');
-    expect(result.status).toBe(200);
-    expect(result.body).toEqual({ status: 'stub' });
-  });
-
-  it('GET / returns 404 (M-05, NEG-28)', () => {
-    expect(routeHandler('GET', '/').status).toBe(404);
-  });
-
-  it('POST /tts returns 404 (M-05, NEG-28 — no audio routes)', () => {
-    expect(routeHandler('POST', '/tts').status).toBe(404);
-  });
-
-  it('GET /ws returns 404 (M-05, NEG-28 — no WebSocket)', () => {
-    expect(routeHandler('GET', '/ws').status).toBe(404);
-  });
-
-  it('GET /process returns 404 (M-05, NEG-28)', () => {
-    expect(routeHandler('GET', '/process').status).toBe(404);
-  });
-});
-
 // ─── Structural File Tests (mandates enforcement) ─────────────────────────────
 
 describe('Structural mandates — file-level verification', () => {
@@ -369,15 +335,20 @@ describe('Structural mandates — file-level verification', () => {
     expect(diff).toBe('');
   });
 
-  it('M-05: voxhop-counterparty/package.json has no production dependencies (NEG-29)', async () => {
+  it('CP-02: voxhop-counterparty/package.json has ws, zod, avr-vad, pino, form-data and no ioredis (§7.12)', async () => {
     const fs = await import('fs');
     const path = await import('path');
     const pkg = JSON.parse(
       fs.readFileSync(path.join(__dirname, '../../voxhop-counterparty/package.json'), 'utf-8'),
     ) as Record<string, unknown>;
-    // No dependencies key or empty
-    const deps = (pkg['dependencies'] ?? {}) as Record<string, string>;
-    expect(Object.keys(deps)).toHaveLength(0);
+    const deps = Object.keys((pkg['dependencies'] ?? {}) as Record<string, string>);
+    expect(deps).toContain('ws');
+    expect(deps).toContain('zod');
+    expect(deps).toContain('avr-vad');
+    expect(deps).toContain('pino');
+    expect(deps).toContain('form-data');
+    expect(deps).not.toContain('ioredis');
+    expect(deps).not.toContain('@nestjs/core');
   });
 
   it('outputs.tf contains ns_records output (M-08, P1-01)', async () => {
@@ -404,4 +375,13 @@ describe('P1-08 Deployment Checklist (ACC-01..ACC-11 + NEG-33)', () => {
   it.skip('[ACC-10] NS delegation banner printed before terraform — make deploy dry-run', () => {});
   it.skip('[ACC-11] 6th persona + restart → GET /personas returns 6 — runtime test', () => {});
   it.skip('[NEG-33] make destroy → no orphaned Route 53 zone → clean re-deploy — Architect Note 3', () => {});
+});
+
+// ─── P2 Counterparty Deployment Checklist (skipped — requires running counterparty) ──
+
+describe('P2 Counterparty Deployment Checklist (CP-01, CP-03, CP-04, CP-05)', () => {
+  it.skip('[CP-01] GET /health on port 3001 returns {"status":"ok"} (not "stub") — requires running counterparty', () => {});
+  it.skip('[CP-03] WS upgrade to /gamma/audio returns 101 — requires running counterparty', () => {});
+  it.skip('[CP-04] WS upgrade to /events?callId=<uuid> with active call returns 101 — requires running counterparty + active call', () => {});
+  it.skip('[CP-05] WS upgrade to /unknown path is destroyed — requires running counterparty', () => {});
 });

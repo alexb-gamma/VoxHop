@@ -1,4 +1,4 @@
-import { Persona } from '../types/persona';
+import { Persona, CallStatus, TranscriptEntry, TelemetryRow } from '../types/persona';
 
 /**
  * appReducer — exact §6.4 state machine implementation.
@@ -34,6 +34,15 @@ export interface AppState {
   errorMessage: string | null;
   micGranted: boolean;
   workletReady: boolean;
+  // Phase 2 — call state
+  callStatus: CallStatus;
+  selectedPersonaId: string | null;
+  transcript: TranscriptEntry[];
+  llmTokenBuffer: string;
+  processingTurn: boolean;
+  aiSpeaking: boolean;   // true from TURN_LATENCY_RECEIVED until next user turn starts
+  telemetry: TelemetryRow[];
+  callErrorMessage: string | null;
 }
 
 export type AppAction =
@@ -44,7 +53,18 @@ export type AppAction =
   | { type: 'MIC_GRANTED' }
   | { type: 'MIC_DENIED'; payload: string }
   | { type: 'WORKLET_READY' }
-  | { type: 'WORKLET_ERROR'; payload: string };
+  | { type: 'WORKLET_ERROR'; payload: string }
+  | { type: 'PERSONA_SELECT'; payload: string }
+  | { type: 'PERSONA_DESELECT' }
+  | { type: 'DIAL_INITIATED' }
+  | { type: 'CALL_ACTIVE' }
+  | { type: 'TRANSCRIPT_RECEIVED'; payload: { role: 'user' | 'counterparty'; text: string; timestamp: number } }
+  | { type: 'LLM_TOKEN_RECEIVED'; payload: string }
+  | { type: 'TURN_LATENCY_RECEIVED'; payload: { sttMs: number; llmMs: number; ttsMs: number; totalMs: number } }
+  | { type: 'HANG_UP_INITIATED' }
+  | { type: 'CALL_ENDED' }
+  | { type: 'CALL_ERROR'; payload: string }
+  | { type: 'DISMISS_CALL_RESULT' };
 
 export const initialState: AppState = {
   status: 'initialising',
@@ -52,6 +72,14 @@ export const initialState: AppState = {
   errorMessage: null,
   micGranted: false,
   workletReady: false,
+  callStatus: 'idle',
+  selectedPersonaId: null,
+  transcript: [],
+  llmTokenBuffer: '',
+  processingTurn: false,
+  aiSpeaking: false,
+  telemetry: [],
+  callErrorMessage: null,
 };
 
 /**
@@ -138,6 +166,96 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         };
       }
       return state;
+
+    case 'PERSONA_SELECT':
+      if (state.callStatus === 'idle') {
+        return { ...state, selectedPersonaId: action.payload };
+      }
+      return state;
+
+    case 'PERSONA_DESELECT':
+      if (state.callStatus === 'idle') {
+        return { ...state, selectedPersonaId: null };
+      }
+      return state;
+
+    case 'DIAL_INITIATED':
+      if (state.callStatus === 'idle') {
+        return { ...state, callStatus: 'connecting' };
+      }
+      return state;
+
+    case 'CALL_ACTIVE':
+      if (state.callStatus === 'connecting') {
+        return { ...state, callStatus: 'active' };
+      }
+      return state;
+
+    case 'TRANSCRIPT_RECEIVED': {
+      if (state.callStatus === 'ended' || state.callStatus === 'error') return state;
+      const entry: TranscriptEntry = {
+        id: crypto.randomUUID(),
+        role: action.payload.role,
+        text: action.payload.text,
+        language: 'en', // will be inferred from context in full implementation
+        timestamp: action.payload.timestamp,
+      };
+      return {
+        ...state,
+        transcript: [...state.transcript, entry],
+        processingTurn: action.payload.role === 'user' ? true : false,
+        // User speaking → AI is no longer speaking. Counterparty response → pipeline
+        // completes shortly, aiSpeaking will be set by TURN_LATENCY_RECEIVED.
+        aiSpeaking: action.payload.role === 'user' ? false : state.aiSpeaking,
+        llmTokenBuffer: action.payload.role === 'counterparty' ? '' : state.llmTokenBuffer,
+      };
+    }
+
+    case 'LLM_TOKEN_RECEIVED':
+      if (state.callStatus === 'ended' || state.callStatus === 'error') return state;
+      return { ...state, llmTokenBuffer: state.llmTokenBuffer + action.payload };
+
+    case 'TURN_LATENCY_RECEIVED':
+      if (state.callStatus === 'ended' || state.callStatus === 'error') return state;
+      return {
+        ...state,
+        aiSpeaking: true,
+        telemetry: [
+          ...state.telemetry,
+          {
+            turnIndex: state.telemetry.length,
+            sttMs: action.payload.sttMs,
+            llmMs: action.payload.llmMs,
+            ttsMs: action.payload.ttsMs,
+            totalMs: action.payload.totalMs,
+          },
+        ],
+      };
+
+    case 'HANG_UP_INITIATED':
+      if (state.callStatus === 'active') {
+        return { ...state, callStatus: 'ended', aiSpeaking: false };
+      }
+      return state;
+
+    case 'CALL_ENDED':
+      return { ...state, callStatus: 'ended', aiSpeaking: false };
+
+    case 'CALL_ERROR':
+      return { ...state, callStatus: 'error', callErrorMessage: action.payload, aiSpeaking: false };
+
+    case 'DISMISS_CALL_RESULT':
+      return {
+        ...state,
+        callStatus: 'idle',
+        selectedPersonaId: null,
+        transcript: [],
+        llmTokenBuffer: '',
+        processingTurn: false,
+        aiSpeaking: false,
+        telemetry: [],
+        callErrorMessage: null,
+      };
 
     default:
       return state;

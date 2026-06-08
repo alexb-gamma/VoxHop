@@ -148,53 +148,58 @@ build {
     ]
   }
 
-  # ─── Download Piper voice pack (en_GB-alan-medium) ──────────────────────
+  # ─── Download Piper voice packs ──────────────────────────────────────────────
+  # Curated set: EN (GB + US), DE, ES, FR, IT — multi-gender, medium quality.
+  # Italian note: riccardo-medium does not exist in Piper catalogue.
+  #   Male IT: riccardo-x_low (only option). Female IT: paola-medium.
+  # German note: No single-speaker female voice exists at medium quality in Piper.
+  #   Female DE: kerstin-low + ramona-low (best available).
+  # All downloads run in parallel (4 workers) to keep AMI build time reasonable.
   provisioner "shell" {
     inline = [
-      "wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx' -O /opt/voxhop/models/en_GB-alan-medium.onnx",
-      "wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json' -O /opt/voxhop/models/en_GB-alan-medium.onnx.json",
-      "echo '[voxhop-ami] Piper en_GB-alan-medium voice pack downloaded'",
-    ]
-  }
+      "echo '[voxhop-ami] Downloading Piper voice packs (EN/DE/ES/FR/IT, multi-gender)...'",
+      "BASE=https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0",
+      "M=/opt/voxhop/models",
 
-  # ─── Download EU Piper voice packs (P1-02) ───────────────────────────────
-  # Voices: es_ES-davefx-medium, fr_FR-siwis-medium, de_DE-thorsten-medium
-  # Italian: HTTP HEAD check for medium; fall back to x_low with WARNING (M-11)
-  provisioner "shell" {
-    inline = [
-      "echo '[voxhop-ami] Downloading EU Piper voice packs...'",
+      "dl() { local v=$1 p=$2; for ext in .onnx .onnx.json; do wget -q \"$BASE/$p/$v$ext\" -O \"$M/$v$ext\" && echo \"OK $v$ext\" || echo \"FAIL $v$ext\"; done; }",
 
-      # Spanish — es_ES-davefx-medium
-      "wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx' -O /opt/voxhop/models/es_ES-davefx-medium.onnx",
-      "wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json' -O /opt/voxhop/models/es_ES-davefx-medium.onnx.json",
-      "echo '[voxhop-ami] es_ES-davefx-medium downloaded'",
+      # ── English GB (British — male + female) ──────────────────────────────
+      "dl en_GB-alan-medium                  en/en_GB/alan/medium                  &",
+      "dl en_GB-alba-medium                  en/en_GB/alba/medium                  &",
+      "dl en_GB-cori-medium                  en/en_GB/cori/medium                  &",
+      "dl en_GB-jenny_dioco-medium           en/en_GB/jenny_dioco/medium           &",
+      "dl en_GB-northern_english_male-medium en/en_GB/northern_english_male/medium &",
+      "wait; echo '[voxhop-ami] EN GB voices done'",
 
-      # French — fr_FR-siwis-medium
-      "wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx' -O /opt/voxhop/models/fr_FR-siwis-medium.onnx",
-      "wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json' -O /opt/voxhop/models/fr_FR-siwis-medium.onnx.json",
-      "echo '[voxhop-ami] fr_FR-siwis-medium downloaded'",
+      # ── English US (American — male + female) ─────────────────────────────
+      "dl en_US-amy-medium                   en/en_US/amy/medium                   &",
+      "dl en_US-bryce-medium                 en/en_US/bryce/medium                 &",
+      "dl en_US-lessac-medium                en/en_US/lessac/medium                &",
+      "dl en_US-ryan-medium                  en/en_US/ryan/medium                  &",
+      "wait; echo '[voxhop-ami] EN US voices done'",
 
-      # German — de_DE-thorsten-medium
-      "wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx' -O /opt/voxhop/models/de_DE-thorsten-medium.onnx",
-      "wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx.json' -O /opt/voxhop/models/de_DE-thorsten-medium.onnx.json",
-      "echo '[voxhop-ami] de_DE-thorsten-medium downloaded'",
+      # ── German — male medium + female low (no female medium exists in Piper)
+      "dl de_DE-thorsten-medium              de/de_DE/thorsten/medium              &",
+      "dl de_DE-kerstin-low                  de/de_DE/kerstin/low                  &",
+      "dl de_DE-ramona-low                   de/de_DE/ramona/low                   &",
 
-      # Italian — M-11: HTTP HEAD check for medium; fall back to x_low with WARNING
-      "IT_MEDIUM_URL='https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/riccardo/medium/it_IT-riccardo-medium.onnx'",
-      "IT_XLOW_URL='https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx'",
-      "if curl -sf --head \"$IT_MEDIUM_URL\" > /dev/null 2>&1; then",
-      "  wget -q \"$IT_MEDIUM_URL\" -O /opt/voxhop/models/it_IT-riccardo-medium.onnx",
-      "  wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/riccardo/medium/it_IT-riccardo-medium.onnx.json' -O /opt/voxhop/models/it_IT-riccardo-medium.onnx.json",
-      "  echo '[voxhop-ami] it_IT-riccardo-medium downloaded (medium quality)'",
-      "  echo 'VOXHOP_IT_VOICE=it_IT-riccardo-medium' >> /etc/voxhop-build.env",
-      "else",
-      "  echo '[voxhop-ami] WARNING: it_IT-riccardo-medium unavailable — installed x_low'",
-      "  wget -q \"$IT_XLOW_URL\" -O /opt/voxhop/models/it_IT-riccardo-x_low.onnx",
-      "  wget -q 'https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx.json' -O /opt/voxhop/models/it_IT-riccardo-x_low.onnx.json",
-      "  echo 'VOXHOP_IT_VOICE=it_IT-riccardo-x_low' >> /etc/voxhop-build.env",
-      "fi",
-      "echo '[voxhop-ami] EU voice packs download complete'",
-      "ls -la /opt/voxhop/models/",
+      # ── Spanish — male (Spain + Mexico) + female (sharvard) ──────────────
+      "dl es_ES-davefx-medium                es/es_ES/davefx/medium                &",
+      "dl es_ES-sharvard-medium              es/es_ES/sharvard/medium              &",
+      "dl es_MX-ald-medium                   es/es_MX/ald/medium                   &",
+      "wait; echo '[voxhop-ami] DE + ES voices done'",
+
+      # ── French — male + female ────────────────────────────────────────────
+      "dl fr_FR-siwis-medium                 fr/fr_FR/siwis/medium                 &",
+      "dl fr_FR-tom-medium                   fr/fr_FR/tom/medium                   &",
+
+      # ── Italian — female medium + male x_low (only options in Piper) ──────
+      "dl it_IT-paola-medium                 it/it_IT/paola/medium                 &",
+      "dl it_IT-riccardo-x_low               it/it_IT/riccardo/x_low               &",
+      "wait; echo '[voxhop-ami] FR + IT voices done'",
+
+      "echo \"[voxhop-ami] Voice pack download complete: $(ls $M/*.onnx | wc -l) models\"",
+      "ls -lh $M/*.onnx",
     ]
   }
 
@@ -345,7 +350,8 @@ build {
     inline = [
       "nvidia-smi",
       "ls -la /opt/voxhop/audio/comfort_en.pcm",
-      "ls -la /opt/voxhop/models/",
+      "echo \"Voice models: $(ls /opt/voxhop/models/*.onnx | wc -l)\"",
+      "ls /opt/voxhop/models/*.onnx",
       "node --version",
       "docker --version",
       "docker compose version",
