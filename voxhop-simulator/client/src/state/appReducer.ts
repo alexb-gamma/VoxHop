@@ -185,19 +185,43 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       }
       return state;
 
-    case 'CALL_ACTIVE':
+    case 'CALL_ACTIVE': {
       if (state.callStatus === 'connecting') {
-        return { ...state, callStatus: 'active' };
+        // Inject the conversation opener into the transcript on the first
+        // connecting→active transition (i.e. when the first audio frame arrives).
+        const persona = state.personas.find((p) => p.id === state.selectedPersonaId);
+        const openerEntries: TranscriptEntry[] = persona?.conversationOpener
+          ? [
+              {
+                id: crypto.randomUUID(),
+                role: 'counterparty' as const,
+                text: persona.conversationOpener,
+                language: persona.language,
+                timestamp: Date.now(),
+              },
+            ]
+          : [];
+        return {
+          ...state,
+          callStatus: 'active',
+          transcript: [...state.transcript, ...openerEntries],
+        };
       }
       return state;
+    }
 
     case 'TRANSCRIPT_RECEIVED': {
       if (state.callStatus === 'ended' || state.callStatus === 'error') return state;
+      const selectedPersona = state.personas.find((p) => p.id === state.selectedPersonaId);
       const entry: TranscriptEntry = {
         id: crypto.randomUUID(),
         role: action.payload.role,
         text: action.payload.text,
-        language: 'en', // will be inferred from context in full implementation
+        // Counterparty entries use the persona's language for accent colours.
+        // User entries default to 'en' (language badge is not rendered for 'user' role).
+        language: action.payload.role === 'counterparty'
+          ? (selectedPersona?.language ?? 'en')
+          : 'en',
         timestamp: action.payload.timestamp,
       };
       return {
